@@ -3,6 +3,7 @@ import {promises as fs} from "node:fs";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {NarrationSchema, ViewSpecSchema, type AlgorithmVideoProps} from "../src/algorithm-video/schema";
+import {resolveStepMarkers} from "../src/algorithm-video/step-markers";
 import {buildTimeline, totalTimelineFrames, type AudioCue} from "../src/algorithm-video/timeline";
 import {createLocalSpeech} from "./local-tts";
 import {createLocalSoundEffects} from "./local-sfx";
@@ -32,7 +33,8 @@ const main = async () => {
   const sourceArg = argument("--source"); const inputArg = argument("--input"); const viewArg = argument("--view");
   if (!sourceArg || !inputArg || !viewArg) throw new Error("Cần --source, --input và --view.");
   const sourcePath = path.resolve(sourceArg); const inputPath = path.resolve(inputArg); const viewPath = path.resolve(viewArg);
-  const view = ViewSpecSchema.parse(JSON.parse(await fs.readFile(viewPath, "utf8")));
+  const sourceText = await fs.readFile(sourcePath, "utf8");
+  const view = resolveStepMarkers(sourceText, ViewSpecSchema.parse(JSON.parse(await fs.readFile(viewPath, "utf8"))));
   const narrationPath = argument("--narration") ? path.resolve(argument("--narration")!) : null;
   const narration = NarrationSchema.parse(narrationPath ? JSON.parse(await fs.readFile(narrationPath, "utf8")) : {});
   const requestedJob = argument("--job");
@@ -64,8 +66,7 @@ const main = async () => {
     : await createLocalSoundEffects(publicDirectory, `generated/${jobId}`);
 
   console.log("3/4 Dựng timeline và props...");
-  const source = await fs.readFile(path.join(jobDirectory, path.basename(sourcePath)), "utf8");
-  const allLines = source.split(/\r?\n/); const sourceLines = allLines.slice(view.show.startLine - 1, view.show.endLine).map((text, offset) => ({number: view.show.startLine + offset, text}));
+  const allLines = sourceText.split(/\r?\n/); const sourceLines = allLines.slice(view.show.startLine - 1, view.show.endLine).map((text, offset) => ({number: view.show.startLine + offset, text}));
   const steps = buildTimeline(trace, view, audioCues); const totalFrames = totalTimelineFrames(steps);
   const props: AlgorithmVideoProps = {trace, view, sourceLines, steps, totalFrames, soundEffects};
   const propsPath = path.join(jobDirectory, "props.json"); await fs.writeFile(propsPath, `${JSON.stringify(props, null, 2)}\n`);

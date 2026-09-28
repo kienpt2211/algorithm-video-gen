@@ -18,6 +18,43 @@ const trace = ExecutionTraceSchema.parse({version: 1, sourceFile: "test.cpp", st
 test("schema accepts a generic trace and view", () => assert.equal(trace.steps.length, 1));
 test("safe index expressions support offsets", () => assert.equal(evaluateIndex("j + 1", {j: 2}), 3));
 test("array swaps are inferred from snapshots", () => assert.deepEqual(deriveEvent(trace.steps[0], view).indices, [0, 1]));
+test("one configured step can read and write multiple visuals", () => {
+  const multiView = ViewSpecSchema.parse({
+    version: 1,
+    title: "PREFIX SUM",
+    sourceFile: "prefix-sum.cpp",
+    show: {startLine: 1, endLine: 10},
+    layout: "stacked",
+    visuals: [
+      {id: "input", label: "INPUT", type: "array-cells", variable: "a"},
+      {id: "prefix", label: "PREFIX", type: "array-cells", variable: "prefix"},
+    ],
+    lineEffects: {
+      4: {
+        actions: [
+          {kind: "read", variable: "a", indices: ["i"]},
+          {kind: "read", variable: "prefix", indices: ["i"]},
+          {kind: "write", variable: "prefix", indices: ["i + 1"]},
+        ],
+      },
+    },
+  });
+  const event = deriveEvent({
+    index: 0,
+    line: 4,
+    displayLine: 4,
+    function: "main",
+    depth: 0,
+    before: {a: [2, 3], prefix: [0, 0, 0], i: 0},
+    after: {a: [2, 3], prefix: [0, 2, 0], i: 0},
+  }, multiView);
+  assert.equal(event.kind, "write");
+  assert.deepEqual(event.actions, [
+    {kind: "read", variable: "a", indices: [0]},
+    {kind: "read", variable: "prefix", indices: [0]},
+    {kind: "write", variable: "prefix", indices: [1]},
+  ]);
+});
 test("timeline derives counters and deterministic frames", () => {
   const timeline = buildTimeline(trace, view);
   assert.equal(timeline[0].counters.swaps, 1);

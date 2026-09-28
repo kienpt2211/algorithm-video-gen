@@ -12,9 +12,13 @@ export const traceRoots = (view: ViewSpec) => {
     for (const pointer of visual.pointers) values.add(rootOf(pointer.expression));
   }
   if (view.phase) values.add(rootOf(view.phase.variable));
-  for (const effect of Object.values(view.lineEffects)) {
+  for (const effect of [...Object.values(view.lineEffects), ...Object.values(view.stepEffects)]) {
     if (effect.variable) values.add(rootOf(effect.variable));
     for (const expression of effect.indices) values.add(rootOf(expression));
+    for (const action of effect.actions) {
+      values.add(rootOf(action.variable));
+      for (const expression of action.indices) values.add(rootOf(expression));
+    }
     if (effect.message) for (const root of templateRoots(effect.message)) values.add(root);
   }
   for (const log of view.logs) {

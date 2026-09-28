@@ -102,16 +102,39 @@ Các trường quan trọng:
 - `show.startLine`, `show.endLine`: vùng code được trace và hiển thị.
 - `visuals`: dữ liệu cần vẽ; hỗ trợ `array-bars`, `array-cells`, `grid`, `stack`,
   `queue`, `string`, `graph`, `tree` và `scalars`.
+- `layout`: bố cục cho nhiều visual: `auto`, `single`, `stacked` hoặc `split`.
 - `visuals[].range`: tùy chọn tô sáng một đoạn liên tiếp, ví dụ cửa sổ từ
   `windowLeft` đến `windowRight`.
 - `counters`: đếm số lần chương trình chạy tới một dòng.
 - `phase`: hiển thị giai đoạn hoặc vòng lặp hiện tại.
 - `lineEffects`: gán `read`, `write`, `swap` hoặc `note` cho từng dòng.
+- `stepEffects`: giống `lineEffects` nhưng tham chiếu marker `// @step <id>` ổn
+  định trong C++, tránh phụ thuộc số dòng. Một effect có thể chứa nhiều `actions`
+  để đọc và ghi nhiều cấu trúc dữ liệu trong cùng một bước.
 - `logs`: thông tin hiển thị ở đầu, cuối hoặc tại một dòng cụ thể.
 - `timing`: tốc độ các bước thường, bước lặp nhanh, bước thay đổi, đoạn kết và
   `tailSteps` — số bước cuối luôn giữ ở tốc độ dễ đọc.
 
 Tên biến trong `visuals`, `phase` và `lineEffects` phải tồn tại trong mã C++.
+
+Ví dụ một bước prefix sum đọc hai ô và ghi một ô:
+
+```cpp
+// @step build-prefix
+prefix[i + 1] = prefix[i] + a[i];
+```
+
+```json
+"stepEffects": {
+  "build-prefix": {
+    "actions": [
+      {"kind": "read", "variable": "a", "indices": ["i"]},
+      {"kind": "read", "variable": "prefix", "indices": ["i"]},
+      {"kind": "write", "variable": "prefix", "indices": ["i + 1"]}
+    ]
+  }
+}
+```
 
 ## Quy tắc viết mã C++
 

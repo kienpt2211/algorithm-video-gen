@@ -18,43 +18,47 @@ const assignmentPulse = (localFrame: number, durationInFrames: number) => interp
   clamp,
 );
 
-const ArrayVisual: React.FC<{step: TimelineStep; visual: ViewSpec["visuals"][number]; localFrame: number; isFinal: boolean}> = ({step, visual, localFrame, isFinal}) => {
+const ArrayVisual: React.FC<{step: TimelineStep; visual: ViewSpec["visuals"][number]; localFrame: number; isFinal: boolean; compact: boolean; availableWidth: number}> = ({step, visual, localFrame, isFinal, compact, availableWidth}) => {
   const before = asArray(getPath(step.before, visual.variable));
   const after = asArray(getPath(step.after, visual.variable));
   const data = before.length ? before : after;
   const max = Math.max(1, ...data.map(numeric));
   const progress = interpolate(localFrame, [0, Math.min(22, step.durationInFrames - 1)], [0, 1], {...clamp, easing: Easing.bezier(0.16, 1, 0.3, 1)});
-  const gap = 12;
-  const width = Math.min(116, (884 - gap * Math.max(0, data.length - 1)) / Math.max(1, data.length));
+  const gap = compact ? 8 : 12;
+  const width = Math.min(compact ? 86 : 116, (availableWidth - gap * Math.max(0, data.length - 1)) / Math.max(1, data.length));
   const isBars = visual.type === "array-bars";
   const pulse = assignmentPulse(localFrame, step.durationInFrames);
   const rangeStart = visual.range ? evaluateIndex(visual.range.start, step.before) : null;
   const rangeEnd = visual.range ? evaluateIndex(visual.range.end, step.before) : null;
+  const actions = (step.event.actions ?? []).filter((action) => action.variable === visual.variable);
+  const activeIndices = new Set(actions.flatMap((action) => action.indices));
+  const swap = actions.find((action) => action.kind === "swap" && action.indices.length === 2);
 
   return <div style={{height: "100%", position: "relative", display: "flex", alignItems: "flex-end", justifyContent: "center", gap}}>
     {data.map((value, index) => {
-      const targetIndex = step.event.kind === "swap" && step.event.indices.includes(index)
-        ? step.event.indices.find((item) => item !== index) ?? index : index;
+      const targetIndex = swap?.indices.includes(index)
+        ? swap.indices.find((item) => item !== index) ?? index : index;
       const x = (targetIndex - index) * (width + gap) * progress;
-      const active = !isFinal && step.event.indices.includes(index);
+      const active = !isFinal && activeIndices.has(index);
       const inRange = rangeStart !== null && rangeEnd !== null && index >= Math.min(rangeStart, rangeEnd) && index <= Math.max(rangeStart, rangeEnd);
-      const writing = active && (step.event.kind === "write" || step.event.kind === "swap");
+      const writing = active && actions.some((action) => (action.kind === "write" || action.kind === "swap") && action.indices.includes(index));
+      const reading = active && !writing;
       const afterValue = after[index] ?? value;
-      const shown = step.event.kind === "swap" ? value : progress > 0.55 ? afterValue : value;
-      const height = isBars ? 76 + (numeric(shown) / max) * 280 : 108;
+      const shown = swap ? value : progress > 0.55 ? afterValue : value;
+      const height = isBars ? (compact ? 42 : 76) + (numeric(shown) / max) * (compact ? 105 : 280) : compact ? 66 : 108;
       return <Interactive.Div name={`${visual.label} ${index}`} key={`${index}-${String(value)}`} style={{
-        width, height, flexShrink: 0, position: "relative", borderRadius: isBars ? "12px 12px 4px 4px" : 12,
+        width, height, flexShrink: 0, position: "relative", borderRadius: isBars ? "12px 12px 4px 4px" : compact ? 9 : 12,
         border: `2px solid ${active ? theme.accent : inRange ? theme.rangeBorder : theme.border}`,
-        backgroundColor: writing ? `rgba(0,174,218,${0.42 + pulse * 0.48})` : active ? theme.accentSoft : inRange ? theme.rangeSoft : theme.accentFaint,
+        backgroundColor: writing ? `rgba(0,174,218,${0.42 + pulse * 0.48})` : reading ? theme.accentSoft : inRange ? theme.rangeSoft : theme.accentFaint,
         boxShadow: writing ? `0 0 ${18 + pulse * 28}px rgba(0,174,218,${0.18 + pulse * 0.28})` : active ? "0 0 16px rgba(0,174,218,0.18)" : inRange ? `inset 0 -5px 0 ${theme.rangeGlow}` : "none",
         color: writing ? theme.textOnAccent : theme.text, translate: `${x}px 0px`, zIndex: active ? 2 : 1,
         scale: writing ? 1 + pulse * 0.035 : 1,
         display: "flex", alignItems: isBars ? "flex-start" : "center", justifyContent: "center",
-        paddingTop: isBars ? 14 : 0, fontSize: 30, fontWeight: 800,
+        paddingTop: isBars ? (compact ? 8 : 14) : 0, fontSize: compact ? 21 : 30, fontWeight: 800,
       }}>
         {String(shown)}
-        <div style={{position: "absolute", bottom: -38, color: theme.muted, fontSize: 20, fontWeight: 600}}>{index}</div>
-        {!isFinal ? visual.pointers.map((pointer) => evaluateIndex(pointer.expression, step.before) === index ? <div key={pointer.label} style={{position: "absolute", top: -42, color: theme.accent, fontSize: 18, fontWeight: 800}}>{pointer.label}</div> : null) : null}
+        <div style={{position: "absolute", bottom: compact ? -25 : -38, color: theme.muted, fontSize: compact ? 14 : 20, fontWeight: 600}}>{index}</div>
+        {!isFinal ? visual.pointers.map((pointer) => evaluateIndex(pointer.expression, step.before) === index ? <div key={pointer.label} style={{position: "absolute", top: compact ? -29 : -42, color: theme.accent, fontSize: compact ? 14 : 18, fontWeight: 800}}>{pointer.label}</div> : null) : null}
       </Interactive.Div>;
     })}
   </div>;
@@ -64,13 +68,16 @@ const GenericVisual: React.FC<{step: TimelineStep; visual: ViewSpec["visuals"][n
   const value = getPath(step.after, visual.variable);
   const type = visual.type;
   const pulse = assignmentPulse(localFrame, step.durationInFrames);
-  const isAssigned = step.event.kind === "write" && step.event.variable === visual.variable;
+  const actions = (step.event.actions ?? []).filter((action) => action.variable === visual.variable);
+  const isAssigned = actions.some((action) => action.kind === "write" || action.kind === "swap");
+  const isRead = actions.some((action) => action.kind === "read");
+  const changedIndices = new Set(actions.flatMap((action) => action.indices));
   if (type === "grid" && Array.isArray(value)) return <div style={{display: "grid", gap: 8, justifyContent: "center"}}>{value.map((row, rowIndex) => <div key={rowIndex} style={{display: "flex", gap: 8}}>{asArray(row).map((cell, column) => {
-    const changed = isAssigned && step.event.indices[0] === rowIndex && (step.event.indices.length === 1 || step.event.indices[1] === column);
+    const changed = isAssigned && changedIndices.has(rowIndex) && (changedIndices.size === 1 || changedIndices.has(column));
     return <div key={column} style={{width: 68, height: 68, border: `2px solid ${changed ? theme.accent : theme.border}`, background: changed ? `rgba(0,174,218,${0.32 + pulse * 0.52})` : theme.accentFaint, color: changed ? theme.textOnAccent : theme.text, boxShadow: changed ? `0 0 ${16 + pulse * 28}px rgba(0,174,218,${0.15 + pulse * 0.3})` : "none", scale: changed ? 1 + pulse * 0.08 : 1, display: "grid", placeItems: "center", fontSize: 24, fontWeight: changed ? 900 : 500}}>{String(cell)}</div>;
   })}</div>)}</div>;
   if (type === "string") return <div style={{display: "flex", justifyContent: "center", gap: 8}}>{String(value ?? "").split("").map((char, index) => {
-    const changed = isAssigned && step.event.indices.includes(index);
+    const changed = isAssigned && changedIndices.has(index);
     return <div key={index} style={{width: 58, height: 72, borderBottom: `3px solid ${theme.accent}`, background: changed ? `rgba(0,174,218,${0.16 + pulse * 0.35})` : "transparent", boxShadow: changed ? `0 12px 24px rgba(0,174,218,${pulse * 0.3})` : "none", scale: changed ? 1 + pulse * 0.06 : 1, display: "grid", placeItems: "center", fontSize: 32}}>{char}</div>;
   })}</div>;
   if (type === "scalars" && value && typeof value === "object" && !Array.isArray(value)) return <div style={{height: "100%", display: "grid", gridTemplateColumns: "1fr 1fr", alignContent: "center", gap: 18}}>{Object.entries(value).slice(0, 10).map(([key, item]) => {
@@ -80,23 +87,32 @@ const GenericVisual: React.FC<{step: TimelineStep; visual: ViewSpec["visuals"][n
   })}</div>;
   const list = Array.isArray(value) ? value : value && typeof value === "object" ? Object.entries(value).map(([key, item]) => `${key}:${String(item)}`) : [value];
   return <div style={{display: "flex", flexDirection: type === "stack" ? "column-reverse" : "row", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 12}}>{list.slice(0, 20).map((item, index) => {
-    const changed = isAssigned && (step.event.indices.length === 0 || step.event.indices.includes(index));
-    return <div key={index} style={{minWidth: 64, minHeight: 64, padding: 12, borderRadius: type === "graph" || type === "tree" ? "50%" : 10, border: `2px solid ${changed ? theme.accent : theme.border}`, background: changed ? `rgba(0,174,218,${0.14 + pulse * 0.3})` : "transparent", boxShadow: changed ? `0 0 24px rgba(0,174,218,${pulse * 0.28})` : "none", scale: changed ? 1 + pulse * 0.06 : 1, display: "grid", placeItems: "center", fontSize: 23}}>{String(item)}</div>;
+    const changed = isAssigned && (changedIndices.size === 0 || changedIndices.has(index));
+    const reading = isRead && (changedIndices.size === 0 || changedIndices.has(index));
+    return <div key={index} style={{minWidth: 64, minHeight: 64, padding: 12, borderRadius: type === "graph" || type === "tree" ? "50%" : 10, border: `2px solid ${changed || reading ? theme.accent : theme.border}`, background: changed ? `rgba(0,174,218,${0.14 + pulse * 0.3})` : reading ? theme.accentFaint : "transparent", boxShadow: changed ? `0 0 24px rgba(0,174,218,${pulse * 0.28})` : reading ? "0 0 16px rgba(0,174,218,0.16)" : "none", scale: changed ? 1 + pulse * 0.06 : 1, display: "grid", placeItems: "center", fontSize: 23}}>{String(item)}</div>;
   })}</div>;
 };
 
 const DataPanel: React.FC<{step: TimelineStep; view: ViewSpec; localFrame: number; isFinal: boolean; totalSteps: number}> = ({step, view, localFrame, isFinal, totalSteps}) => {
-  const visual = view.visuals[0];
+  const layout = view.layout === "auto" ? (view.visuals.length === 1 ? "single" : "stacked") : view.layout;
+  const compact = view.visuals.length > 1;
   const completionPulse = isFinal ? assignmentPulse(localFrame, step.durationInFrames) : 0;
   const impactful = step.event.kind === "swap" || step.event.kind === "write";
-  return <Interactive.Div name="Data visualization" style={{position: "absolute", left: 70, right: 70, top: 210, height: 500, border: `1px solid ${isFinal ? theme.accent : theme.border}`, boxShadow: isFinal ? `0 0 ${18 + completionPulse * 34}px rgba(0,174,218,${completionPulse * 0.2})` : impactful ? `0 0 ${10 + assignmentPulse(localFrame, step.durationInFrames) * 24}px rgba(0,174,218,0.12)` : "none", borderRadius: 22, backgroundColor: theme.panel, padding: "54px 48px 62px", scale: impactful ? interpolate(localFrame, [0, 5, Math.min(18, step.durationInFrames - 1)], [1, 1.014, 1], {...clamp, easing: Easing.bezier(0.16, 1, 0.3, 1)}) : 1}}>
-    <div style={{position: "absolute", left: 28, top: 22, color: theme.muted, fontSize: 20, letterSpacing: "0.14em", fontWeight: 800}}>{visual.label.toUpperCase()}</div>
+  return <Interactive.Div name="Data visualization" style={{position: "absolute", left: 70, right: 70, top: 210, height: 500, border: `1px solid ${isFinal ? theme.accent : theme.border}`, boxShadow: isFinal ? `0 0 ${18 + completionPulse * 34}px rgba(0,174,218,${completionPulse * 0.2})` : impactful ? `0 0 ${10 + assignmentPulse(localFrame, step.durationInFrames) * 24}px rgba(0,174,218,0.12)` : "none", borderRadius: 22, backgroundColor: theme.panel, padding: compact ? "58px 24px 24px" : "54px 48px 62px", scale: impactful ? interpolate(localFrame, [0, 5, Math.min(18, step.durationInFrames - 1)], [1, 1.014, 1], {...clamp, easing: Easing.bezier(0.16, 1, 0.3, 1)}) : 1}}>
+    {!compact ? <div style={{position: "absolute", left: 28, top: 22, color: theme.muted, fontSize: 20, letterSpacing: "0.14em", fontWeight: 800}}>{view.visuals[0].label.toUpperCase()}</div> : null}
     <div style={{position: "absolute", right: 28, top: 20, display: "flex", gap: 14, alignItems: "center"}}>
       <span style={{color: theme.muted, fontSize: 15, fontWeight: 800, letterSpacing: "0.13em"}}>STEP</span>
       <span style={{color: theme.text, fontSize: 24, fontWeight: 900}}>{step.index + 1}<span style={{color: theme.muted, fontSize: 16}}>/{totalSteps}</span></span>
       {isFinal ? <span style={{padding: "8px 13px", borderRadius: 999, background: theme.accent, color: theme.textOnAccent, fontSize: 16, fontWeight: 900, letterSpacing: "0.12em", opacity: completionPulse, scale: 0.92 + completionPulse * 0.08}}>COMPLETE</span> : null}
     </div>
-    {visual.type === "array-bars" || visual.type === "array-cells" ? <ArrayVisual step={step} visual={visual} localFrame={localFrame} isFinal={isFinal}/> : <GenericVisual step={step} visual={visual} localFrame={localFrame}/>} 
+    <div style={{height: "100%", display: "grid", gridTemplateColumns: layout === "split" ? `repeat(${Math.min(2, view.visuals.length)}, minmax(0, 1fr))` : "1fr", gridTemplateRows: layout === "stacked" ? `repeat(${view.visuals.length}, minmax(0, 1fr))` : undefined, gap: compact ? 14 : 0}}>
+      {view.visuals.map((visual) => <Interactive.Div name={visual.label} key={visual.id} style={{position: "relative", minHeight: 0, border: compact ? `1px solid ${theme.border}` : "none", borderRadius: compact ? 14 : 0, padding: compact ? "30px 18px 28px" : 0, background: compact ? "rgba(0,174,218,0.025)" : "transparent"}}>
+        {compact ? <div style={{position: "absolute", left: 16, top: 10, color: theme.muted, fontSize: 14, letterSpacing: "0.12em", fontWeight: 800}}>{visual.label.toUpperCase()}</div> : null}
+        {visual.type === "array-bars" || visual.type === "array-cells"
+          ? <ArrayVisual step={step} visual={visual} localFrame={localFrame} isFinal={isFinal} compact={compact} availableWidth={layout === "split" ? 390 : compact ? 820 : 884}/>
+          : <GenericVisual step={step} visual={visual} localFrame={localFrame}/>}
+      </Interactive.Div>)}
+    </div>
   </Interactive.Div>;
 };
 
@@ -175,9 +191,9 @@ export const AlgorithmVideo: React.FC<AlgorithmVideoProps> = (props) => {
 
 const defaultProps: AlgorithmVideoProps = {
   trace: {version: 1, sourceFile: "algorithm.cpp", stdout: "", exitCode: 0, truncated: false, steps: [{index: 0, line: 1, displayLine: 1, function: "main", depth: 0, before: {data: [5, 2, 4, 1]}, after: {data: [2, 5, 4, 1]}}]},
-  view: {version: 1, title: "ALGORITHM", sourceFile: "algorithm.cpp", show: {startLine: 1, endLine: 1}, credit: "ALGORITHM REEL", labels: {running: "running", console: "console"}, visuals: [{id: "data", label: "DATA", type: "array-bars", variable: "data", pointers: [], range: null}], counters: [], phase: null, lineEffects: {}, logs: [], timing: {firstOccurrences: 2, normalFrames: 18, fastFrames: 10, changeFrames: 24, endFrames: 54, tailSteps: 8}},
+  view: {version: 1, title: "ALGORITHM", sourceFile: "algorithm.cpp", show: {startLine: 1, endLine: 1}, credit: "ALGORITHM REEL", labels: {running: "running", console: "console"}, layout: "auto", visuals: [{id: "data", label: "DATA", type: "array-bars", variable: "data", pointers: [], range: null}], counters: [], phase: null, lineEffects: {}, stepEffects: {}, logs: [], timing: {firstOccurrences: 2, normalFrames: 18, fastFrames: 10, changeFrames: 24, endFrames: 54, tailSteps: 8}},
   sourceLines: [{number: 1, text: "swap(data[0], data[1]);"}],
-  steps: [{index: 0, line: 1, displayLine: 1, function: "main", depth: 0, before: {data: [5, 2, 4, 1]}, after: {data: [2, 5, 4, 1]}, occurrence: 1, event: {kind: "swap", variable: "data", indices: [0, 1], message: "swap(5, 2)"}, counters: {}, durationInFrames: 90, startFrame: 0, audioPath: null, narrationText: null, captions: []}],
+  steps: [{index: 0, line: 1, displayLine: 1, function: "main", depth: 0, before: {data: [5, 2, 4, 1]}, after: {data: [2, 5, 4, 1]}, occurrence: 1, event: {kind: "swap", variable: "data", indices: [0, 1], actions: [{kind: "swap", variable: "data", indices: [0, 1]}], message: "swap(5, 2)"}, counters: {}, durationInFrames: 90, startFrame: 0, audioPath: null, narrationText: null, captions: []}],
   totalFrames: 90,
   soundEffects: null,
 };

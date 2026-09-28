@@ -47,6 +47,21 @@ export const VisualTypeSchema = z.enum([
   "scalars",
 ]);
 
+export const StepActionSchema = z.object({
+  kind: z.enum(["read", "write", "swap"]),
+  variable: z.string().min(1),
+  indices: z.array(z.string()).max(2).default([]),
+});
+
+const StepEffectSchema = z.object({
+  // Legacy single-action fields remain supported so existing fixtures keep working.
+  kind: z.enum(["read", "write", "swap", "note"]).default("note"),
+  variable: z.string().optional(),
+  indices: z.array(z.string()).max(2).default([]),
+  actions: z.array(StepActionSchema).default([]),
+  message: z.string().optional(),
+});
+
 export const ViewSpecSchema = z.object({
   version: z.literal(1),
   title: z.string().min(1).max(80),
@@ -57,6 +72,7 @@ export const ViewSpecSchema = z.object({
     running: z.string().default("running"),
     console: z.string().default("console"),
   }).default({running: "running", console: "console"}),
+  layout: z.enum(["auto", "single", "stacked", "split"]).default("auto"),
   visuals: z.array(z.object({
     id: z.string().min(1),
     label: z.string().min(1),
@@ -68,18 +84,18 @@ export const ViewSpecSchema = z.object({
   counters: z.array(z.object({
     id: z.string().min(1),
     label: z.string().min(1),
-    line: z.number().int().positive(),
+    line: z.number().int().positive().optional(),
+    step: z.string().min(1).optional(),
+  }).refine((counter) => counter.line !== undefined || counter.step !== undefined, {
+    message: "Counter cần line hoặc step.",
   })).default([]),
   phase: z.object({label: z.string(), variable: z.string()}).nullable().default(null),
-  lineEffects: z.record(z.string(), z.object({
-    kind: z.enum(["read", "write", "swap", "note"]).default("note"),
-    variable: z.string().optional(),
-    indices: z.array(z.string()).max(2).default([]),
-    message: z.string().optional(),
-  })).default({}),
+  lineEffects: z.record(z.string(), StepEffectSchema).default({}),
+  stepEffects: z.record(z.string(), StepEffectSchema).default({}),
   logs: z.array(z.object({
     at: z.enum(["start", "end", "line"]),
     line: z.number().int().positive().optional(),
+    step: z.string().min(1).optional(),
     occurrence: z.number().int().positive().default(1),
     level: z.enum(["ok", "warn"]).default("ok"),
     text: z.string().min(1),
@@ -109,10 +125,17 @@ export type ExecutionTrace = z.infer<typeof ExecutionTraceSchema>;
 export type ViewSpec = z.infer<typeof ViewSpecSchema>;
 export type Narration = z.infer<typeof NarrationSchema>;
 
+export type DerivedAction = {
+  kind: "read" | "write" | "swap";
+  variable: string;
+  indices: number[];
+};
+
 export type DerivedEvent = {
   kind: "read" | "write" | "swap" | "none";
   variable: string | null;
   indices: number[];
+  actions: DerivedAction[];
   message: string;
 };
 

@@ -1,4 +1,4 @@
-import type {DerivedEvent, Snapshot, TraceStep, TraceValue, ViewSpec} from "./schema";
+import type {DerivedAction, DerivedEvent, Snapshot, TraceStep, TraceValue, ViewSpec} from "./schema";
 
 export const getPath = (snapshot: Snapshot, path: string): TraceValue | undefined => {
   const parts = path.split(".").filter(Boolean);
@@ -37,18 +37,38 @@ const arrayDiff = (before: TraceValue[], after: TraceValue[]) => {
 export const deriveEvent = (step: TraceStep, view: ViewSpec): DerivedEvent => {
   const configured = view.lineEffects[String(step.displayLine)];
   if (configured) {
-    const indices = configured.indices
-      .map((expression) => evaluateIndex(expression, step.before))
-      .filter((value): value is number => value !== null);
-    const variable = configured.variable ?? view.visuals[0]?.variable ?? null;
+    const configuredActions = configured.actions.length > 0
+      ? configured.actions
+      : configured.kind === "note"
+        ? []
+        : [{kind: configured.kind, variable: configured.variable ?? view.visuals[0]?.variable ?? "state", indices: configured.indices}];
+    const actions: DerivedAction[] = configuredActions.map((action) => ({
+      kind: action.kind,
+      variable: action.variable,
+      indices: action.indices
+        .map((expression) => evaluateIndex(expression, step.before))
+        .filter((value): value is number => value !== null),
+    }));
+    const primary = actions.find((action) => action.kind === "swap")
+      ?? actions.find((action) => action.kind === "write")
+      ?? actions[0];
+    const indices = primary?.indices ?? [];
+    const variable = primary?.variable ?? configured.variable ?? view.visuals[0]?.variable ?? null;
     const values = indices.map((index) => {
       const data = variable ? getPath(step.before, variable) : undefined;
       return Array.isArray(data) ? data[index] : undefined;
     });
-    const fallback = configured.kind === "swap"
+    const kind = actions.some((action) => action.kind === "swap")
+      ? "swap"
+      : actions.some((action) => action.kind === "write")
+        ? "write"
+        : actions.some((action) => action.kind === "read")
+          ? "read"
+          : "none";
+    const fallback = kind === "swap"
       ? `swap(${values.map(String).join(", ")})`
-      : `${configured.kind} ${variable ?? "state"}`;
-    return {kind: configured.kind === "note" ? "none" : configured.kind, variable, indices, message: configured.message ?? fallback};
+      : `${kind === "none" ? "note" : kind} ${variable ?? "state"}`;
+    return {kind, variable, indices, actions, message: configured.message ?? fallback};
   }
 
   for (const visual of view.visuals) {
@@ -58,16 +78,21 @@ export const deriveEvent = (step: TraceStep, view: ViewSpec): DerivedEvent => {
     if (Array.isArray(before) && Array.isArray(after)) {
       const indices = arrayDiff(before, after);
       const swapped = indices.length === 2 && equal(before[indices[0]], after[indices[1]]) && equal(before[indices[1]], after[indices[0]]);
-      return {
+      const action: DerivedAction = {
         kind: swapped ? "swap" : "write",
         variable: visual.variable,
         indices,
+      };
+      return {
+        ...action,
+        actions: [action],
         message: swapped ? `swap(${String(before[indices[0]])}, ${String(before[indices[1]])})` : `${visual.variable}[${indices.join(", ")}] updated`,
       };
     }
-    return {kind: "write", variable: visual.variable, indices: [], message: `${visual.variable} = ${String(after)}`};
+    const action: DerivedAction = {kind: "write", variable: visual.variable, indices: []};
+    return {...action, actions: [action], message: `${visual.variable} = ${String(after)}`};
   }
-  return {kind: "read", variable: null, indices: [], message: `line ${step.displayLine}`};
+  return {kind: "read", variable: null, indices: [], actions: [], message: `line ${step.displayLine}`};
 };
 
 export const counterTotals = (steps: TraceStep[], view: ViewSpec) =>
