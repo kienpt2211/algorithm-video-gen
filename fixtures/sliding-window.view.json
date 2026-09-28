@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "title": "Sliding Window",
+  "sourceFile": "sliding-window.cpp",
+  "show": {"startLine": 12, "endLine": 28},
+  "visuals": [
+    {
+      "id": "data",
+      "label": "Fixed-size window",
+      "type": "array-cells",
+      "variable": "a",
+      "pointers": [
+        {"label": "L", "expression": "windowLeft"},
+        {"label": "R", "expression": "windowRight"}
+      ],
+      "range": {"start": "windowLeft", "end": "windowRight"}
+    }
+  ],
+  "counters": [
+    {"id": "windows", "label": "SLIDES", "line": 26},
+    {"id": "updates", "label": "BEST UPDATES", "line": 27}
+  ],
+  "phase": {"label": "LEFT", "variable": "windowLeft"},
+  "lineEffects": {
+    "15": {"kind": "read", "variable": "a", "indices": ["i"], "message": "build the first window"},
+    "22": {"kind": "write", "variable": "a", "indices": ["windowLeft"], "message": "move the left boundary"},
+    "23": {"kind": "write", "variable": "a", "indices": ["next"], "message": "move the right boundary"},
+    "24": {"kind": "read", "variable": "a", "indices": ["windowRight"], "message": "add the entering value"},
+    "25": {"kind": "read", "variable": "a", "indices": ["outgoing"], "message": "remove the leaving value"},
+    "26": {"kind": "read", "variable": "a", "indices": ["windowLeft", "windowRight"], "message": "compare this window with the best"},
+    "27": {"kind": "write", "variable": "a", "indices": ["windowLeft", "windowRight"], "message": "update the best window"}
+  },
+  "logs": [
+    {"at": "start", "level": "ok", "text": "window size = {k}"},
+    {"at": "line", "line": 26, "occurrence": 1, "level": "ok", "text": "current sum = {windowSum}, best = {bestSum}"},
+    {"at": "end", "level": "ok", "text": "best starts at index {bestLeft}, sum = {bestSum}"}
+  ],
+  "timing": {
+    "firstOccurrences": 2,
+    "normalFrames": 18,
+    "fastFrames": 10,
+    "changeFrames": 24,
+    "endFrames": 60,
+    "tailSteps": 10
+  }
+}

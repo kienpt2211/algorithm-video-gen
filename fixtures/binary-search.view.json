@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "title": "Binary Search",
+  "sourceFile": "binary-search.cpp",
+  "show": {"startLine": 10, "endLine": 22},
+  "visuals": [{"id": "data", "label": "Sorted array", "type": "array-cells", "variable": "a", "pointers": [{"label": "L", "expression": "left"}, {"label": "M", "expression": "mid"}, {"label": "R", "expression": "right"}]}],
+  "counters": [{"id": "cmp", "label": "CMP", "line": 13}],
+  "lineEffects": {
+    "13": {"kind": "read", "variable": "a", "indices": ["mid"], "message": "compare a[mid] with target"},
+    "18": {"kind": "write", "variable": "a", "indices": ["mid"], "message": "move left boundary"},
+    "20": {"kind": "write", "variable": "a", "indices": ["mid"], "message": "move right boundary"}
+  },
+  "logs": [{"at": "start", "level": "ok", "text": "search range initialized"}, {"at": "end", "level": "ok", "text": "result index = {answer}"}]
+}
